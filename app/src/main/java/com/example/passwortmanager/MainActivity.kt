@@ -1,47 +1,48 @@
-// MainActivity.kt – Final korrigierte Version (Material3-kompatibel, mit Drawer, Bearbeiten, Löschen, Kommentaren)
+// MainActivity.kt – Passwortmanager mit erweiterten Funktionen und Fehlerfreiheit
 package com.example.passwortmanager
 
+// Imports für Android- und Jetpack Compose-Komponenten
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import java.security.SecureRandom
 
-// Datenklasse für gespeicherte Zugangsdaten
-// Enthält die Webseite, den Benutzernamen und das Passwort
+// Datenklasse für gespeicherte Zugangsdaten (Webseite, Benutzername, Passwort)
 data class Credential(var site: String, var username: String, var password: String)
 
+// Einstiegspunkt der App – Android Activity mit Compose
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Definiert den UI-Inhalt der App
         setContent {
-            // Setzt das UI-Theme und ruft den App-Aufbau mit Navigation Drawer auf
             MaterialTheme {
-                AppWithDrawer()
+                AppWithDrawer()  // Ruft die Haupt-UI mit Seitenmenü auf
             }
         }
     }
 }
 
+// Composable mit Navigation Drawer (Seitenmenü) + TopBar
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppWithDrawer() {
-    // DrawerState speichert, ob das Menü offen oder geschlossen ist
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed) // Zustand des Drawers
+    val scope = rememberCoroutineScope() // Coroutine für UI-Aktionen
 
-    // ModalNavigationDrawer zeigt links ein aufklappbares Menü
+    // Definiert das Seitenmenü (Drawer)
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -56,7 +57,7 @@ fun AppWithDrawer() {
             }
         }
     ) {
-        // Scaffold verwaltet die TopAppBar und den Inhaltsbereich
+        // Scaffold mit TopBar und Inhalt
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -70,30 +71,38 @@ fun AppWithDrawer() {
             }
         ) { innerPadding ->
             Surface(modifier = Modifier.padding(innerPadding)) {
-                PasswordManagerScreen()
+                PasswordManagerScreen() // Hauptbildschirm
             }
         }
     }
 }
 
+// Hauptbildschirm mit Passwortverwaltung
 @Composable
 fun PasswordManagerScreen() {
-    // Eingabefelder als Zustände speichern
+    // Zustände für Eingabefelder
     var site by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
-    // Bearbeitungszustände: wird gerade ein Eintrag bearbeitet?
-    var isEditing by remember { mutableStateOf(false) }
-    var editingIndex by remember { mutableStateOf(-1) }
+    var isEditing by remember { mutableStateOf(false) }     // Bearbeitungsmodus?
+    var editingIndex by remember { mutableStateOf(-1) }     // Welcher Eintrag wird bearbeitet?
+    val credentials = remember { mutableStateListOf<Credential>() }  // Liste aller gespeicherten Passwörter
+    val context = LocalContext.current                      // Kontext z. B. für Toasts
+    var searchQuery by remember { mutableStateOf("") }      // Suchfeld-Text
 
-    // Liste aller gespeicherten Anmeldedaten
-    val credentials = remember { mutableStateListOf<Credential>() }
-
-    // UI-Layout
     Column(modifier = Modifier.padding(16.dp)) {
 
-        // Eingabe: Webseite
+        // Suchfeld
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            label = { Text("🔍 Suche") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Eingabefeld: Webseite
         OutlinedTextField(
             value = site,
             onValueChange = { site = it },
@@ -102,7 +111,7 @@ fun PasswordManagerScreen() {
         )
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Eingabe: Benutzername
+        // Eingabefeld: Benutzername
         OutlinedTextField(
             value = username,
             onValueChange = { username = it },
@@ -111,7 +120,7 @@ fun PasswordManagerScreen() {
         )
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Eingabe: Passwort
+        // Eingabefeld: Passwort
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
@@ -119,9 +128,20 @@ fun PasswordManagerScreen() {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             modifier = Modifier.fillMaxWidth()
         )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Button zum Generieren eines sicheren Passworts
+        Button(
+            onClick = {
+                password = generateSecurePassword()
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("🔐 Sicheres Passwort generieren")
+        }
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Speichern-Button oder Aktualisieren (bei Bearbeitung)
+        // Button zum Speichern oder Aktualisieren
         Button(
             onClick = {
                 if (site.isNotBlank() && username.isNotBlank() && password.isNotBlank()) {
@@ -144,8 +164,11 @@ fun PasswordManagerScreen() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Anzeige aller gespeicherten Zugangsdaten
-        credentials.forEachIndexed { index, cred ->
+        // Gefilterte Einträge anzeigen (nach Suchtext)
+        credentials.filter {
+            it.site.contains(searchQuery, ignoreCase = true) ||
+                    it.username.contains(searchQuery, ignoreCase = true)
+        }.forEachIndexed { index, cred ->
             CredentialItem(
                 credential = cred,
                 onDelete = { credentials.removeAt(index) },
@@ -162,12 +185,35 @@ fun PasswordManagerScreen() {
     }
 }
 
+// Ein einzelner Eintrag in der Liste (Credential)
 @Composable
 fun CredentialItem(credential: Credential, onDelete: () -> Unit, onEdit: () -> Unit) {
-    // Zustand: Passwort sichtbar oder nicht
-    var isPasswordVisible by remember { mutableStateOf(false) }
+    var isPasswordVisible by remember { mutableStateOf(false) } // Passwort sichtbar?
+    var showDialog by remember { mutableStateOf(false) }         // Löschdialog aktiv?
 
-    // UI-Komponente für eine einzelne gespeicherte Anmeldedaten-Karte
+    // Wenn Dialog aktiviert ist, zeige Bestätigungsdialog
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Eintrag löschen") },
+            text = { Text("Möchtest du diesen Eintrag wirklich löschen?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDialog = false
+                    onDelete()
+                }) {
+                    Text("Löschen")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDialog = false }) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+    }
+
+    // Darstellung des Eintrags
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text("🌐 ${credential.site}", style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp))
@@ -178,18 +224,29 @@ fun CredentialItem(credential: Credential, onDelete: () -> Unit, onEdit: () -> U
             )
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                // Passwort anzeigen/verstecken
                 Button(onClick = { isPasswordVisible = !isPasswordVisible }) {
                     Text(if (isPasswordVisible) "Verstecken" else "Anzeigen")
                 }
+                // Icons zum Bearbeiten und Löschen
                 Row {
                     IconButton(onClick = onEdit) {
                         Icon(Icons.Default.Edit, contentDescription = "Bearbeiten")
                     }
-                    IconButton(onClick = onDelete) {
+                    IconButton(onClick = { showDialog = true }) {
                         Icon(Icons.Default.Delete, contentDescription = "Löschen")
                     }
                 }
             }
         }
     }
+}
+
+// Funktion zum Generieren eines sicheren Passworts
+fun generateSecurePassword(length: Int = 12): String {
+    val charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#\$%^&*()_-+=<>?"
+    val random = SecureRandom() // Sichere Zufallsquelle
+    return (1..length)
+        .map { charset[random.nextInt(charset.length)] }
+        .joinToString("") // Gibt ein zufälliges Zeichen aus dem Charset zurück
 }
